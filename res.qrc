@@ -1,0 +1,12 @@
+<RCC>
+    <qresource prefix="/">
+        <file>img.vsh</file>
+        <file>custom.fsh</file>
+        <file>tr/wapper_tool.ts</file>
+        <file>tr/wapper_tool.qm</file>
+        <file alias="logo_jpg">rc/logo.jpg</file>
+        <file alias="logo">rc/logo.ico</file>
+        <file>rc/res.rc</file>
+        <file>rc/rc.qss</file>
+    </qresource>
+</RCC>

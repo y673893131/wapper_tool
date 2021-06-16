@@ -1,0 +1,21 @@
+#menu
+{
+    background: white;
+    border: 1px solid lightgray;
+}
+
+#menu::item
+{
+    background: none;
+    color: #1B1B1B;
+    font: 13px "Microsoft YaHei";
+    padding: 10px 30px;
+    text-align:center;
+}
+
+#menu::item::selected
+{
+    background: #28A0F6;
+    color: white;
+    font-weight: bold;
+}
