@@ -6,7 +6,6 @@
 #include <QOpenGLShader>
 #include <QOpenGLTexture>
 #include <QOpenGLBuffer>
-#include <QMovie>
 #include "video/videoframe.h"
 
 struct _texture_obj_{
@@ -56,7 +55,6 @@ signals:
     void playOver();
 public slots:
     void setSpeed(int);
-    void setSrcFile(const QString&);
     void onAppendFrame(void*);
 
 protected:
@@ -72,9 +70,6 @@ private:
     GLfloat m_vertexVertices[8], m_textureVertices[8];
     _texture_obj_ m_texture[TEXTURE_MAX];
     QPoint m_center;
-    QImage m_img;
-    QMovie* m_movie;
-    uchar* m_buffer;
     _video_frame_* m_pFrame;
 
 

@@ -9,14 +9,12 @@ QGLDisplayWidget::QGLDisplayWidget(QWidget *parent)
     ,m_vShader(nullptr),m_fShader(nullptr)
     ,m_program(nullptr),m_pFrame(nullptr)
 {
-    m_movie = new QMovie();
-    m_movie->setCacheMode(QMovie::CacheAll);
-    connect(m_movie, &QMovie::frameChanged, this, [=]{ update(); });
 }
 
 QGLDisplayWidget::~QGLDisplayWidget()
 {
     qDebug() << "gl video widget quit.";
+    m_program->release();
 }
 
 void QGLDisplayWidget::setDisplaySize(int w, int h)
@@ -28,13 +26,6 @@ void QGLDisplayWidget::setSpeed(int speed)
 {
     if(speed)
         m_nDelay = speed;
-}
-
-void QGLDisplayWidget::setSrcFile(const QString& file)
-{
-    m_movie->stop();
-    m_movie->setFileName(file);
-    m_movie->start();
 }
 
 void QGLDisplayWidget::onAppendFrame(void* frame)

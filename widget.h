@@ -16,6 +16,7 @@ public:
     Widget(QWidget *parent = nullptr);
     static Widget* instance();
     void setCenter(int x, int y);
+    void setUp(int x, int y);
     void setKeyDown(int code);
     ~Widget();
 signals:

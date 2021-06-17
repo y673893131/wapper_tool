@@ -22,7 +22,7 @@
 
 HHOOK mouseHook=nullptr;
 HHOOK keyHook=nullptr;
-LRESULT CALLBACK mouseProc(int nCode,WPARAM wParam,LPARAM lParam)
+LRESULT CALLBACK hookProc(int nCode,WPARAM wParam,LPARAM lParam)
 {
     if(nCode == HC_ACTION)
     {
@@ -33,16 +33,33 @@ LRESULT CALLBACK mouseProc(int nCode,WPARAM wParam,LPARAM lParam)
             ::GetCursorPos(&pt);
             Widget::instance()->setCenter(pt.x, pt.y);
         }break;
-        case WM_KEYUP:
+        case WM_LBUTTONUP:
+        {
+            POINT pt;
+            ::GetCursorPos(&pt);
+             Widget::instance()->setUp(pt.x, pt.y);
+        }break;
+        case WM_KEYDOWN:
         case WM_SYSKEYDOWN:
-        case WM_SYSKEYUP:
         {
             Widget::instance()->setKeyDown(lParam);
         }break;
+        default:
+            break;
         }
     }
 
+
     return CallNextHookEx(mouseHook,nCode,wParam,lParam);
+}
+
+bool bShowDesktop = false;
+bool bNeedReload = false;
+HWND _curWd = nullptr;
+inline BOOL CALLBACK EnumWindowsDesktopProc(_In_ HWND hWnd, _In_ LPARAM lparam)
+{
+    _curWd = hWnd;
+    return true;
 }
 
 HWND _workerw = nullptr;
@@ -56,15 +73,40 @@ inline BOOL CALLBACK EnumWindowsProc(_In_ HWND tophandle, _In_ LPARAM topparamha
     return true;
 }
 
+RECT _ShowDeskTopBtnRC = {-1,-1,-1,-1};
+inline BOOL CALLBACK EnumChildWindowsProc(_In_ HWND tophandle, _In_ LPARAM topparamhandle)
+{
+    HWND showDeskTop = FindWindowEx(tophandle, 0, L"TrayShowDesktopButtonWClass", nullptr);
+    if (showDeskTop != nullptr)
+    {
+        GetWindowRect(showDeskTop, &_ShowDeskTopBtnRC);
+    }
+
+    return true;
+}
+
 HWND getworkWnd(){
-    int result;
+    _workerw = NULL;
     HWND windowHandle = FindWindow(L"Progman", nullptr);
-    //使用 0x3e8 命令分割出两个 WorkerW
-    SendMessageTimeout(windowHandle, 0x052c, 0 ,0, SMTO_NORMAL, 0x3e8,(PDWORD_PTR)&result);
+    HWND trayWnd = FindWindow(L"Shell_TrayWnd", nullptr);
+    if(trayWnd)
+    {
+        EnumChildWindows(trayWnd, EnumChildWindowsProc, NULL);
+    }
+
     //遍历窗体获得窗口句柄
     EnumWindows(EnumWindowsProc,(LPARAM)nullptr);
-    // 显示WorkerW
-    ShowWindow(_workerw,SW_HIDE);
+
+    if(_workerw)
+    {
+        ShowWindow(_workerw, SW_HIDE);
+    }
+    else
+    {
+        int result = 0;
+        //使用 0x3e8 命令分割出两个 WorkerW
+        SendMessageTimeout(windowHandle, 0x052c, 0 ,0, SMTO_NORMAL, 0x3e8,(PDWORD_PTR)&result);
+    }
     return windowHandle;
 }
 
@@ -85,8 +127,8 @@ Widget::Widget(QWidget *parent)
     init();
 
     m_this = this;
-    mouseHook = SetWindowsHookEx(WH_MOUSE_LL, mouseProc, GetModuleHandle(NULL),NULL);
-    keyHook = SetWindowsHookEx(WH_KEYBOARD_LL, mouseProc, GetModuleHandle(NULL),NULL);
+    mouseHook = SetWindowsHookEx(WH_MOUSE_LL, hookProc, GetModuleHandle(NULL),NULL);
+    keyHook = SetWindowsHookEx(WH_KEYBOARD_LL, hookProc, GetModuleHandle(NULL),NULL);
 
     connect(this, &Widget::setUrl, m_control, &QVideoControl::onStart);
     connect(this, &Widget::setUrl, m_data, &QDataModel::onAddUrl);
@@ -94,6 +136,30 @@ Widget::Widget(QWidget *parent)
     connect(m_control, &QVideoControl::end, this, &Widget::onEnd, Qt::DirectConnection);
     connect(this, &Widget::prev, this, &Widget::onPrev);
     connect(this, &Widget::next, this, &Widget::onNext);
+    auto timer = new QTimer(this);
+    timer->setInterval(200);
+    connect(timer, &QTimer::timeout, [=,&work]{
+        if(!::IsWindow((HWND)this->winId()))
+        {
+            qDebug() << "isWindow: false.";
+            m_tray->hide();
+            qApp->quit();
+        }
+
+        _curWd = NULL;
+        EnumChildWindows(work, EnumWindowsDesktopProc, NULL);
+        if((HWND)this->winId() != _curWd || bNeedReload)
+        {
+            bNeedReload = false;
+            work = getworkWnd();
+            if(work)
+            {
+                SetParent((HWND)this->winId(), work);
+                qDebug() << "reload desk." << work << (HWND)this->winId();
+            }
+        }
+    });
+    timer->start();
 }
 
 Widget *Widget::instance()
@@ -103,8 +169,16 @@ Widget *Widget::instance()
 
 void Widget::setCenter(int x, int y)
 {
-//    m_label->update();
 //    qDebug() << __FUNCTION__ << x << y;
+}
+
+void Widget::setUp(int x, int y)
+{
+    if(_ShowDeskTopBtnRC.top <= y && _ShowDeskTopBtnRC.bottom >= y &&
+       _ShowDeskTopBtnRC.left <= x && _ShowDeskTopBtnRC.right >= x)
+    {
+        bShowDesktop = true;
+    }
 }
 
 void Widget::setKeyDown(int lp)
@@ -112,10 +186,34 @@ void Widget::setKeyDown(int lp)
     auto p = (PKBDLLHOOKSTRUCT)lp;
     if((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0)
     {
-        if(p->vkCode == VK_LEFT)
+        if(p->vkCode == VK_UP)
             emit prev();
-        else if(p->vkCode == VK_RIGHT)
+        else if(p->vkCode == VK_DOWN)
             emit next();
+    }
+    else if((GetAsyncKeyState(VK_LWIN) & 0x8000) != 0 ||
+            (GetAsyncKeyState(VK_RWIN) & 0x8000) != 0)
+    {
+        switch (p->vkCode) {
+        case 0x44://D
+        case 0x64://d
+            //show desktop
+            bShowDesktop = true;
+            qDebug() << "press D";
+            break;
+        case VK_TAB:
+            if(bShowDesktop)
+            {
+                bShowDesktop = false;
+                bNeedReload = true;
+                qDebug() << "press TAB";
+            }
+            else
+            {
+                qDebug() << "press TAB_FALSE";
+            }
+            break;
+        }
     }
 }
 
@@ -125,8 +223,6 @@ Widget::~Widget()
     if(mouseHook) UnhookWindowsHookEx(mouseHook);
     if(keyHook) UnhookWindowsHookEx(keyHook);
 }
-
-#include "QDataModel.h"
 
 void Widget::init()
 {
@@ -166,13 +262,24 @@ void Widget::initTray()
     });
 
     connect(action_add, &QAction::triggered, [=](){
-        auto url = QFileDialog::getOpenFileUrl(nullptr, QString(),
-                                    QUrl(QStandardPaths::writableLocation(QStandardPaths::DesktopLocation)),
+        auto urls = QFileDialog::getOpenFileNames(nullptr, QString(),
+                                    QStandardPaths::writableLocation(QStandardPaths::DesktopLocation),
                                     tr("All Files (*.*);;mp4 (*.mp4)"));
-        addUrl(url.toLocalFile());
-        setUserEnd(true);
-        emit setUrl(url.toLocalFile());
-        setUserEnd(false);
+        for(auto file : urls)
+        {
+            addUrl(file);
+            m_data->onAddUrl(file);
+            setUserEnd(true);
+            emit setUrl(file);
+            setUserEnd(false);
+        }
+
+        if(!urls.empty())
+        {
+            setUserEnd(true);
+            m_control->onStart(urls[0]);
+            setUserEnd(false);
+        }
     });
 
     connect(m_data, &QDataModel::loadsuccess, [=](const QVector<QStringList>& info)
